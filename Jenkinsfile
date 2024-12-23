@@ -1,57 +1,60 @@
 pipeline {
     agent any
 
+    environment {
+        CLOUD_CREDENTIALS_ID = 'cloud-credentials' // Replace with your Jenkins credentials ID
+        DEPLOYMENT_BUCKET = 'your-bucket-name' // Replace with your cloud bucket name
+        DEPLOYMENT_REGION = 'your-region' // Replace with your region
+    }
+
     stages {
         stage('Checkout Code') {
             steps {
-                script {
-                    echo 'Checking out code from the GitHub repository...'
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: '*/main']], // Replace 'main' with your branch name if needed
-                        userRemoteConfigs: [[
-                            url: 'https://github.com/muhammadwasiqkh/apache.git', // Replace with your repository URL
-                           
-                        ]]
-                    ])
-                }
+                echo 'Checking out code from repository...'
+                checkout scm
             }
         }
 
-        stage('Package') {
+        stage('Build') {
             steps {
-                script {
-                    echo 'Packaging HTML file...'
-                    // Create a tarball with the HTML file
-                    sh 'tar -czf app.tar.gz *.html'
-                }
+                echo 'Building the application...'
+                // Add your build command, e.g., npm, mvn, or Gradle
+                sh 'npm install && npm run build'
             }
         }
 
-       stage('Deploy to Remote Server') {
+        stage('Test') {
             steps {
-                script {
-                    echo 'Deploying HTML file to the remote server...'
+                echo 'Running tests...'
+                // Add your test command, e.g., npm test, mvn test
+                sh 'npm test'
+            }
+        }
 
-                    def remoteServer = '13.51.194.44' // Replace with the public IP of your EC2 instance
-
-                    sshagent(['Sarmad']) { // Use Jenkins credentials ID for SSH
-                        // Copy the HTML package to the remote server
-                        sh "scp -o StrictHostKeyChecking=no -r * ubuntu@${remoteServer}:/var/www/html/"
-
-                    }
+        stage('Deploy to Cloud') {
+            steps {
+                echo 'Deploying to cloud...'
+                withCredentials([string(credentialsId: CLOUD_CREDENTIALS_ID, variable: 'CLOUD_AUTH')]) {
+                    // Example using AWS CLI (adjust for your cloud provider)
+                    sh '''
+                    export AWS_ACCESS_KEY_ID=$(echo $CLOUD_AUTH | jq -r '.accessKeyId')
+                    export AWS_SECRET_ACCESS_KEY=$(echo $CLOUD_AUTH | jq -r '.secretAccessKey')
+                    aws s3 sync ./build s3://$DEPLOYMENT_BUCKET --region $DEPLOYMENT_REGION
+                    '''
                 }
             }
         }
     }
 
     post {
-        success {
-            echo 'Deployment completed successfully!'
+        always {
+            echo 'Pipeline execution completed.'
         }
-
+        success {
+            echo 'Pipeline succeeded! 🎉'
+        }
         failure {
-            echo 'Deployment failed. Please check the logs.'
+            echo 'Pipeline failed! ❌'
         }
     }
 }
